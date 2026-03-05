@@ -5,8 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="UdlejningsApp">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a1628">
+<meta name="application-name" content="UdlejningsApp">
+<meta name="description" content="Bil udlejning og biltjek management">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Din UdlejningsApp</title>
+<script>
+// ── Service Worker registrering ─────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js')
+      .then(r => console.log('[PWA] Service Worker klar'))
+      .catch(e => console.warn('[PWA] SW fejl:', e));
+  });
+}
+
+// ── Install-prompt ───────────────────────────────
+let _installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _installPrompt = e;
+  const btn = document.getElementById('pwaInstallBtn');
+  if(btn) btn.style.display = 'inline-flex';
+});
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('pwaInstallBtn');
+  if(btn) btn.style.display = 'none';
+  showToast && showToast('App installeret! ✅', 'success');
+});
+window.installPWA = function(){
+  if(!_installPrompt){ showToast('Brug "Tilføj til hjemmeskærm" i din browsers menu','success'); return; }
+  _installPrompt.prompt();
+  _installPrompt.userChoice.then(r => {
+    if(r.outcome==='accepted') showToast('App installeres...','success');
+    _installPrompt = null;
+  });
+};
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -14,12 +52,12 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot }
                              from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const FB_CFG = {
-  apiKey:            "AIzaSyCSzKiHS1Mwlw6OfABUHYK1Dfi4YO_9aAM",
-  authDomain:        "biltjek-af1c6.firebaseapp.com",
-  projectId:         "biltjek-af1c6",
-  storageBucket:     "biltjek-af1c6.firebasestorage.app",
-  messagingSenderId: "129179334692",
-  appId:             "1:129179334692:web:509706136fc906a648c0b1"
+  apiKey:            "AIzaSyDCxGOtkgg5_9o_07ugztHvPLB2JCiFtlQ",
+  authDomain:        "tml-biltjek.firebaseapp.com",
+  projectId:         "tml-biltjek",
+  storageBucket:     "tml-biltjek.firebasestorage.app",
+  messagingSenderId: "35306695911",
+  appId:             "1:35306695911:web:90ff25397a111a17a88642"
 };
 
 const COLS = ['contracts','vehicles','drivers','checks','users','settings'];
@@ -328,6 +366,7 @@ tr:hover td{background:var(--bg3);}
   <div class="topbar">
     <div class="topbar-logo">DIN UDLEJNINGSAPP</div>
     <div class="topbar-user">Logget ind som: <span id="currentUserLabel"></span></div>
+    <button id="pwaInstallBtn" class="btn btn-accent btn-sm" onclick="installPWA()" style="display:none">📲 Installér app</button>
     <button class="btn btn-ghost btn-sm" onclick="doLogout()">Log ud</button>
   </div>
   <div class="nav" id="mainNav">
@@ -635,6 +674,17 @@ tr:hover td{background:var(--bg3);}
         <div class="field"><label>Administrationsgebyr bøder (DKK)</label><input id="s_gebyr" type="number" placeholder="500"></div>
       </div>
       <button class="btn btn-accent mt-8" onclick="saveSettings()">Gem indstillinger</button>
+    </div>
+    <div class="card mt-16">
+      <div class="card-title">📲 Installér app</div>
+      <p style="color:var(--text2);font-size:.85rem;margin-bottom:12px">Installér appen på din telefons hjemmeskærm — fungerer som en rigtig app, også offline.</p>
+      <div class="flex gap-8" style="flex-wrap:wrap">
+        <button class="btn btn-accent" onclick="installPWA()">📲 Installér på denne enhed</button>
+      </div>
+      <div style="margin-top:12px;font-size:.8rem;color:var(--text2)">
+        <b>iPhone/iPad:</b> Tryk del-ikonet <b>□↑</b> → "Føj til hjemmeskærm"<br>
+        <b>Android/Chrome:</b> Tryk på knappen ovenfor, eller menu → "Installér app"
+      </div>
     </div>
     <div class="card mt-16" id="fbConfigCard">
       <div class="card-title">☁️ Firebase — Delt database</div>
