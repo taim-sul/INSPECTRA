@@ -9,37 +9,108 @@
 <title>Din UdlejningsApp</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script type="module">
-// ════════════════════════════════════════════════
-//  FIREBASE — realtids database på tværs af enheder
-//  Konfigurer via Indstillinger → Firebase i appen
-// ════════════════════════════════════════════════
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot }
+                             from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-const COLLECTIONS = ['contracts','vehicles','drivers','checks','users','settings'];
-let _db = null, _fbConnected = false;
+const FB_CFG = {
+  apiKey:            "AIzaSyCSzKiHS1Mwlw6OfABUHYK1Dfi4YO_9aAM",
+  authDomain:        "biltjek-af1c6.firebaseapp.com",
+  projectId:         "biltjek-af1c6",
+  storageBucket:     "biltjek-af1c6.firebasestorage.app",
+  messagingSenderId: "129179334692",
+  appId:             "1:129179334692:web:509706136fc906a648c0b1"
+};
 
-async function fbInit(){
-  // Hardkodet Firebase-konfiguration — virker på alle enheder uden opsætning
-  const HARDCODED = {
-    apiKey: "AIzaSyCSzKiHS1Mwlw6OfABUHYK1Dfi4YO_9aAM",
-    authDomain: "biltjek-af1c6.firebaseapp.com",
-    projectId: "biltjek-af1c6",
-    storageBucket: "biltjek-af1c6.firebasestorage.app",
-    messagingSenderId: "129179334692",
-    appId: "1:129179334692:web:509706136fc906a648c0b1"
-  };
-  localStorage.setItem('fb_config', JSON.stringify(HARDCODED));
-  const cfg = HARDCODED;
-  if(!cfg || !cfg.projectId) return;
+const COLS = ['contracts','vehicles','drivers','checks','users','settings'];
+let _db   = null;
+let _queue = []; // Skrive-kø til før Firebase er klar
+
+// ── Status UI ─────────────────────────────────────
+function fbStatus(msg, color='var(--text2)'){
+  const el = document.getElementById('fbSyncStatus');
+  if(el){ el.textContent = msg; el.style.color = color; }
+  console.log('[Firebase]', msg);
+}
+
+// ── Skriv ét dokument til Firestore ───────────────
+async function fbWrite(k, v){
+  if(!_db){ _queue.push({k,v}); return; }
   try{
-    const app = initializeApp(cfg);
+    await setDoc(doc(_db,'app','data_'+k), {value: v});
+  } catch(e){
+    console.error('[Firebase] Write fejl for '+k, e);
+  }
+}
+
+// ── Tøm kø af ventende skrivninger ────────────────
+async function flushQueue(){
+  while(_queue.length){
+    const {k,v} = _queue.shift();
+    await fbWrite(k, v);
+  }
+}
+
+// ── Hent alle collections fra Firestore ───────────
+async function fbSync(){
+  fbStatus('🔄 Synkroniserer...', 'var(--accent)');
+  let anyData = false;
+  for(const col of COLS){
+    try{
+      const snap = await getDoc(doc(_db,'app','data_'+col));
+      if(snap.exists()){
+        localStorage.setItem(col, JSON.stringify(snap.data().value));
+        anyData = true;
+      }
+    } catch(e){ console.warn('[Firebase] Sync fejl for '+col, e); }
+  }
+
+  // Hvis Firebase er tom — upload lokal data automatisk
+  if(!anyData){
+    fbStatus('⬆️ Uploader lokal data til Firebase...', 'var(--accent)');
+    for(const col of COLS){
+      const local = localStorage.getItem(col);
+      if(local) await fbWrite(col, JSON.parse(local));
+    }
+    fbStatus('✅ Lokal data uploadet til Firebase', 'var(--green)');
+  }
+
+  // Genrender UI med friske data
+  if(window.currentUser) COLS.forEach(fbRender);
+}
+
+// ── Genrender berørte sider ────────────────────────
+function fbRender(col){
+  try{
+    if(col==='contracts'){ window.renderContracts&&renderContracts(); window.renderDashboard&&renderDashboard(); }
+    if(col==='vehicles') { window.renderVehicles&&renderVehicles();  window.renderDashboard&&renderDashboard(); }
+    if(col==='drivers')  { window.renderDrivers&&renderDrivers();    window.populateDriverSelect&&populateDriverSelect(); }
+    if(col==='checks')   { window.btLoadChecks&&btLoadChecks();      window.renderDashboard&&renderDashboard(); }
+    if(col==='settings')   window.loadSettings&&loadSettings();
+    if(col==='users')      window.renderUsers&&renderUsers();
+  } catch(e){}
+}
+
+// ── Init ──────────────────────────────────────────
+async function fbInit(){
+  fbStatus('⏳ Forbinder til Firebase...', 'var(--text2)');
+  try{
+    const app = initializeApp(FB_CFG);
     _db = getFirestore(app);
-    window._fbReady = true;
+
+    // Eksponér write-funktion globalt — setData() kalder denne
+    window._fbWrite = fbWrite;
+    window._fbSync  = fbSync;
+
+    // Tøm kø af skrivninger der skete inden Firebase var klar
+    await flushQueue();
+
+    // Hent data fra Firebase
     await fbSync();
-    // Realtids-listener: opdater alle enheder automatisk
-    for(const col of COLLECTIONS){
-      onSnapshot(doc(_db,'app','data_'+col), snap=>{
+
+    // Realtids-lyttere — opdaterer ALLE enheder automatisk
+    for(const col of COLS){
+      onSnapshot(doc(_db,'app','data_'+col), snap => {
         if(!snap.exists()) return;
         const fresh = JSON.stringify(snap.data().value);
         if(fresh !== localStorage.getItem(col)){
@@ -48,54 +119,18 @@ async function fbInit(){
         }
       });
     }
-    fbStatus('✅ Forbundet til Firebase', 'var(--green)');
-    _fbConnected = true;
+
+    fbStatus('✅ Forbundet — synkroniserer i realtid', 'var(--green)');
+
   } catch(e){
     fbStatus('❌ Firebase fejl: '+e.message, 'var(--red)');
-    console.error(e);
+    console.error('[Firebase] Init fejl:', e);
   }
 }
 
-async function fbSync(){
-  fbStatus('🔄 Synkroniserer...','var(--accent)');
-  for(const col of COLLECTIONS){
-    try{
-      const snap = await getDoc(doc(_db,'app','data_'+col));
-      if(snap.exists()) localStorage.setItem(col, JSON.stringify(snap.data().value));
-    }catch(e){ console.warn('fbSync fejl for '+col, e); }
-  }
-  if(window.currentUser){
-    COLLECTIONS.forEach(c => fbRender(c));
-  }
-}
+// Start straks — ikke efter DOMContentLoaded
+fbInit();
 
-function fbRender(col){
-  try{
-    if(col==='contracts') { window.renderContracts&&renderContracts(); window.renderDashboard&&renderDashboard(); }
-    if(col==='vehicles')  { window.renderVehicles&&renderVehicles(); window.renderDashboard&&renderDashboard(); }
-    if(col==='drivers')   { window.renderDrivers&&renderDrivers(); window.populateDriverSelect&&populateDriverSelect(); }
-    if(col==='checks')    { window.btLoadChecks&&btLoadChecks(); window.renderDashboard&&renderDashboard(); }
-    if(col==='settings')  window.loadSettings&&loadSettings();
-    if(col==='users')     window.renderUsers&&renderUsers();
-  }catch(e){}
-}
-
-function fbStatus(msg, color){
-  const el = document.getElementById('fbSyncStatus');
-  if(el){ el.textContent=msg; el.style.color=color||'var(--text2)'; }
-}
-
-// Global write-hook: kaldes fra setData()
-window._fbWrite = async function(k, v){
-  if(!_db || !_fbConnected) return;
-  try{ await setDoc(doc(_db,'app','data_'+k),{value:v}); }
-  catch(e){ console.warn('Firebase write fejl:',e); }
-};
-
-window._fbSync = fbSync;
-window._fbStatus = fbStatus;
-
-document.addEventListener('DOMContentLoaded', ()=> setTimeout(fbInit, 300));
 </script>
 
 <style>
