@@ -2098,6 +2098,7 @@ function showToast(msg,type=''){
 //  BILTJEK — IMAGE CLICK DAMAGE
 // ════════════════════════════════════════════════
 let btCurrentDamages=[],btCurrentPhotos=[],btEditingId=null;
+let _btAllChecks=[];
 let btPendingPin=null;
 let btChecks={};
 let btCurrentBiltype='kassevogn';
@@ -2374,6 +2375,7 @@ function btDeleteCheck(id){
 
 function btMigrateOldPhotos(){
   const checks=getData('checks');
+  if(checks.length)_btAllChecks=checks;
   let pending=0,changed=false;
   const MAX=1200,Q=0.70;
   checks.forEach((c,ci)=>{
@@ -2399,7 +2401,9 @@ function btMigrateOldPhotos(){
 
 function btLoadChecks(){
   const q=(document.getElementById('btSearch')||{}).value||'';
-  let list=getData('checks');
+  const allChecks=getData('checks');
+  _btAllChecks=allChecks;
+  let list=allChecks;
   if(q)list=list.filter(c=>JSON.stringify(c).toLowerCase().includes(q.toLowerCase()));
   list=list.slice().reverse();
   const tbody=document.getElementById('btChecksBody');
@@ -2426,7 +2430,12 @@ function btLoadChecks(){
 }
 
 function btShowHistory(type,id,label){
-  let list=getData('checks');
+  let list=_btAllChecks.length?_btAllChecks:getData('checks');
+  if(!list.length){
+    showToast('Indlæser data...','success');
+    setTimeout(()=>{_btAllChecks=getData('checks');btShowHistory(type,id,label);},800);
+    return;
+  }
   if(type==='vehicle')list=list.filter(c=>String(c.vehicleId)===String(id));
   else list=list.filter(c=>String(c.driverId)===String(id));
   list.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -2494,8 +2503,16 @@ function btNewCheckFromHistory(){
 let currentBtRapportId=null;
 function btShowFullRapport(id){
   currentBtRapportId=id;
-  const c=getData('checks').find(x=>x.id===id);
-  if(!c){showToast('Biltjek ikke fundet','error');return;}
+  let checks=_btAllChecks.length?_btAllChecks:getData('checks');
+  const c=checks.find(x=>x.id===id);
+  if(!c){
+    if(!_btAllChecks.length){
+      showToast('Indlæser data...','success');
+      setTimeout(()=>{_btAllChecks=getData('checks');btShowFullRapport(id);},800);
+      return;
+    }
+    showToast('Biltjek ikke fundet','error');return;
+  }
   const rapTitle=document.getElementById('btRapportTitle');
   const rapContent=document.getElementById('btRapportContent');
   if(!rapTitle||!rapContent){showToast('Rapport modal mangler','error');return;}
