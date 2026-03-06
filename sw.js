@@ -29,6 +29,11 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
+  // Cloudflare Workers — gå altid direkte til netværk, aldrig cache
+  if(url.hostname.includes('workers.dev')){
+    return; // lad browseren håndtere det selv
+  }
+
   // Firebase og Google Fonts — network first, fallback til cache
   if(url.hostname.includes('firebase') || url.hostname.includes('googleapis') || url.hostname.includes('gstatic')){
     e.respondWith(
