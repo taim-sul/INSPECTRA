@@ -1528,50 +1528,26 @@ async function whatsappContract(){
       var pdfBlob=pdf.output('blob');
       var pdfFile=new File([pdfBlob],'Kontrakt-'+contractNum+'.pdf',{type:'application/pdf'});
 
-      // Prøv Web Share API med fil — spring canShare over (upålidelig på Samsung)
+      // Del via native share sheet (som Din-Biltjek)
       if(navigator.share){
         try{
-          await navigator.share({files:[pdfFile],title:'Udlejningskontrakt '+contractNum,text:msg});
-          pdfShared=true;
+          await navigator.share({files:[pdfFile],title:'Kontrakt-'+contractNum+'.pdf',text:msg});
+          return;
         }catch(shareErr){
-          if(shareErr.name==='AbortError'){
-            pdfShared=true; // Bruger annullerede — gør ikke noget mere
-          } else {
-            // Browser understøtter ikke fildeling — download som fallback
-            var url=URL.createObjectURL(pdfFile);
-            var a=document.createElement('a');a.href=url;a.download='Kontrakt-'+contractNum+'.pdf';
-            document.body.appendChild(a);a.click();document.body.removeChild(a);
-            setTimeout(function(){URL.revokeObjectURL(url);},10000);
-            showToast('PDF downloadet — åbner WhatsApp...','success');
-          }
+          if(shareErr.name==='AbortError') return;
+          // share() fejlede — fald igennem til download
         }
-      } else {
-        // Ingen Web Share API — download PDF
-        var url=URL.createObjectURL(pdfFile);
-        var a=document.createElement('a');a.href=url;a.download='Kontrakt-'+contractNum+'.pdf';
-        document.body.appendChild(a);a.click();document.body.removeChild(a);
-        setTimeout(function(){URL.revokeObjectURL(url);},10000);
-        showToast('PDF downloadet — åbner WhatsApp...','success');
       }
+      // Fallback: download PDF (desktop/browser uden share API)
+      var url=URL.createObjectURL(pdfFile);
+      var a=document.createElement('a');a.href=url;a.download='Kontrakt-'+contractNum+'.pdf';
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      setTimeout(function(){URL.revokeObjectURL(url);},10000);
+      showToast('PDF downloadet','success');
     }
   }catch(err){
-    console.warn('WhatsApp PDF fejl (bruger fallback):',err);
-  }
-
-  // Åbn WhatsApp med besked (hvis PDF ikke blev delt via Web Share)
-  if(!pdfShared){
-    var waMsg=encodeURIComponent(msg);
-    // whatsapp:// deep link tvinger appen åben på Android/Samsung
-    // Fald tilbage på wa.me efter 1.5s hvis appen ikke åbnede
-    var deepLink=phone?'whatsapp://send?phone='+phone+'&text='+waMsg:'whatsapp://send?text='+waMsg;
-    var waUrl=phone?'https://wa.me/'+phone+'?text='+waMsg:'https://wa.me/?text='+waMsg;
-    var t0=Date.now();
-    window.location.href=deepLink;
-    setTimeout(function(){
-      // Hvis siden stadig er synlig (deep link virkede ikke), åbn wa.me
-      if(Date.now()-t0<2000) window.open(waUrl,'_blank');
-    },1500);
-    showToast('WhatsApp åbnet','success');
+    console.warn('Kontrakt PDF fejl:',err);
+    showToast('Fejl ved PDF-generering','error');
   }
 }
 function createTempContractEl(c){
@@ -2247,4 +2223,4 @@ if(_pickup){_pickup.min=_localNow;_pickup.value=_localNow;}
 </script>
 <div id="btPrintArea"></div>
 </body>
-</html>
+  </html>
