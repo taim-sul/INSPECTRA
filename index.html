@@ -1528,16 +1528,25 @@ async function whatsappContract(){
       var pdfBlob=pdf.output('blob');
       var pdfFile=new File([pdfBlob],'Kontrakt-'+contractNum+'.pdf',{type:'application/pdf'});
 
-      // Prøv Web Share API med fil (fungerer på mobil)
-      if(navigator.canShare && navigator.canShare({files:[pdfFile]})){
-        await navigator.share({
-          files:[pdfFile],
-          title:'Udlejningskontrakt '+contractNum,
-          text:msg
-        });
-        pdfShared=true;
+      // Prøv Web Share API med fil — spring canShare over (upålidelig på Samsung)
+      if(navigator.share){
+        try{
+          await navigator.share({files:[pdfFile],title:'Udlejningskontrakt '+contractNum,text:msg});
+          pdfShared=true;
+        }catch(shareErr){
+          if(shareErr.name==='AbortError'){
+            pdfShared=true; // Bruger annullerede — gør ikke noget mere
+          } else {
+            // Browser understøtter ikke fildeling — download som fallback
+            var url=URL.createObjectURL(pdfFile);
+            var a=document.createElement('a');a.href=url;a.download='Kontrakt-'+contractNum+'.pdf';
+            document.body.appendChild(a);a.click();document.body.removeChild(a);
+            setTimeout(function(){URL.revokeObjectURL(url);},10000);
+            showToast('PDF downloadet — åbner WhatsApp...','success');
+          }
+        }
       } else {
-        // Download PDF og åbn WhatsApp separat
+        // Ingen Web Share API — download PDF
         var url=URL.createObjectURL(pdfFile);
         var a=document.createElement('a');a.href=url;a.download='Kontrakt-'+contractNum+'.pdf';
         document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -1552,12 +1561,16 @@ async function whatsappContract(){
   // Åbn WhatsApp med besked (hvis PDF ikke blev delt via Web Share)
   if(!pdfShared){
     var waMsg=encodeURIComponent(msg);
+    // whatsapp:// deep link tvinger appen åben på Android/Samsung
+    // Fald tilbage på wa.me efter 1.5s hvis appen ikke åbnede
+    var deepLink=phone?'whatsapp://send?phone='+phone+'&text='+waMsg:'whatsapp://send?text='+waMsg;
     var waUrl=phone?'https://wa.me/'+phone+'?text='+waMsg:'https://wa.me/?text='+waMsg;
-    var waWin=window.open(waUrl,'_blank');
-    // Fallback hvis popup blev blokeret
-    if(!waWin){
-      window.location.href=waUrl;
-    }
+    var t0=Date.now();
+    window.location.href=deepLink;
+    setTimeout(function(){
+      // Hvis siden stadig er synlig (deep link virkede ikke), åbn wa.me
+      if(Date.now()-t0<2000) window.open(waUrl,'_blank');
+    },1500);
     showToast('WhatsApp åbnet','success');
   }
 }
