@@ -395,6 +395,7 @@ tr:hover td{background:var(--bg3);}
     <div id="loginErr" style="color:var(--red);font-size:.82rem;margin-top:10px;display:none;">Forkert adgangskode</div>
   </div>
   <div style="color:var(--text3);font-size:.75rem;margin-top:20px;">Superbruger: super2024</div>
+  <button onclick="if(confirm('Nulstil alle brugere? Du kan logge ind med super2024 bagefter.')){localStorage.removeItem('users');localStorage.removeItem('pua_session');location.reload();}" style="margin-top:12px;background:none;border:1px solid var(--border);border-radius:8px;padding:8px 16px;color:var(--text3);font-size:.75rem;cursor:pointer;font-family:'Barlow',sans-serif">🔑 Glemt kode? Nulstil brugere</button>
 </div>
 
 <!-- APP -->
