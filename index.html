@@ -395,7 +395,7 @@ tr:hover td{background:var(--bg3);}
     <div id="loginErr" style="color:var(--red);font-size:.82rem;margin-top:10px;display:none;">Forkert adgangskode</div>
   </div>
   <div style="color:var(--text3);font-size:.75rem;margin-top:20px;">Superbruger: super2024</div>
-  <button onclick="if(confirm('Nulstil alle brugere? Du kan logge ind med super2024 bagefter.')){localStorage.removeItem('users');localStorage.removeItem('pua_session');location.reload();}" style="margin-top:12px;background:none;border:1px solid var(--border);border-radius:8px;padding:8px 16px;color:var(--text3);font-size:.75rem;cursor:pointer;font-family:'Barlow',sans-serif">🔑 Glemt kode? Nulstil brugere</button>
+  <button onclick="resetAllUsers()" style="margin-top:12px;background:none;border:1px solid var(--border);border-radius:8px;padding:8px 16px;color:var(--text3);font-size:.75rem;cursor:pointer;font-family:'Barlow',sans-serif">🔑 Glemt kode? Nulstil brugere</button>
 </div>
 
 <!-- APP -->
@@ -957,11 +957,28 @@ function initTheme(){
 
 function doLogin(){
   const p=document.getElementById('loginPass').value;
-  const user=getData('users').find(x=>x.password===p);
+  const users=getData('users');
+  console.log('[Login] Brugere i systemet:', JSON.stringify(users.map(u=>({id:u.id,name:u.name,role:u.role,passLength:(u.password||'').length}))));
+  const user=users.find(x=>x.password===p);
   if(!user){document.getElementById('loginErr').style.display='block';return;}
   document.getElementById('loginErr').style.display='none';
   localStorage.setItem('pua_session',JSON.stringify({id:user.id,token:_hashSession(user.id,p)}));
   activateApp(user);
+}
+
+function resetAllUsers(){
+  if(!confirm('Nulstil alle brugere?\n\nDu kan logge ind med koden: super2024')) return;
+  var freshUsers = [{id:'1',name:'Superbruger',password:'super2024',role:'super'}];
+  localStorage.setItem('users', JSON.stringify(freshUsers));
+  localStorage.removeItem('pua_session');
+  // Skriv også til Firebase så den ikke overskriver
+  if(window._fbWrite){
+    window._fbWrite('users', freshUsers);
+    console.log('[Reset] Brugere nulstillet i Firebase');
+  }
+  console.log('[Reset] Brugere nulstillet:', JSON.stringify(freshUsers));
+  alert('Brugere nulstillet! Kode: super2024');
+  location.reload();
 }
 function doLogout(){
   currentUser=null;
