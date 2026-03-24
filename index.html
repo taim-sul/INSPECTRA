@@ -390,12 +390,11 @@ tr:hover td{background:var(--bg3);}
   <div class="login-sub">Varebil Udlejning</div>
   <div class="login-card">
     <h2>Log ind</h2>
-    <div class="field"><label>Brugernavn</label><input type="text" id="loginUser" placeholder="Brugernavn"></div>
     <div class="field"><label>Adgangskode</label><input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="btn btn-accent btn-full mt-16" onclick="doLogin()">LOG IND</button>
-    <div id="loginErr" style="color:var(--red);font-size:.82rem;margin-top:10px;display:none;">Forkert brugernavn eller adgangskode</div>
+    <div id="loginErr" style="color:var(--red);font-size:.82rem;margin-top:10px;display:none;">Forkert adgangskode</div>
   </div>
-  <div style="color:var(--text3);font-size:.75rem;margin-top:20px;">Standard admin: admin / pilot2024</div>
+  <div style="color:var(--text3);font-size:.75rem;margin-top:20px;">Superbruger: super2024</div>
 </div>
 
 <!-- APP -->
@@ -414,7 +413,7 @@ tr:hover td{background:var(--bg3);}
     <div class="nav-item" onclick="showPage('vehicles',this)">Biler</div>
     <div class="nav-item" onclick="showPage('drivers',this)">Lejere</div>
 
-    <div class="nav-item admin-only" onclick="showPage('users',this)" style="display:none">Brugere</div>
+    <div class="nav-item super-only" onclick="showPage('users',this)" style="display:none">Brugere</div>
     <div class="nav-item admin-only" onclick="showPage('settings',this)" style="display:none">Indstillinger</div>
   </div>
 
@@ -675,7 +674,7 @@ tr:hover td{background:var(--bg3);}
     </div>
     <div class="page-sub">Administrer brugere og login</div>
     <div class="card"><div class="table-wrap"><table>
-      <thead><tr><th>Brugernavn</th><th>Navn</th><th>Rolle</th><th>Handlinger</th></tr></thead>
+      <thead><tr><th>Navn</th><th>Type</th><th>Rolle</th><th>Handlinger</th></tr></thead>
       <tbody id="usersBody"></tbody>
     </table></div></div>
   </div>
@@ -796,6 +795,15 @@ tr:hover td{background:var(--bg3);}
   <div class="modal">
     <h3 id="dModalTitle">Tilføj Lejer</h3>
     <input type="hidden" id="dm_editId">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn btn-blue btn-sm" onclick="openDriverModalScan('korekort')">🪪 Scan Kørekort</button>
+      <button class="btn btn-blue btn-sm" onclick="openDriverModalScan('sundhedskort')">🏥 Scan Sundhedskort</button>
+      <button class="btn btn-blue btn-sm" onclick="openDriverModalScan('vub')">🚛 Scan VUB</button>
+      <input type="file" id="dmScan_korekort" accept="image/*" capture="environment" style="display:none" onchange="handleDriverModalScan(event,'korekort')">
+      <input type="file" id="dmScan_sundhedskort" accept="image/*" capture="environment" style="display:none" onchange="handleDriverModalScan(event,'sundhedskort')">
+      <input type="file" id="dmScan_vub" accept="image/*" capture="environment" style="display:none" onchange="handleDriverModalScan(event,'vub')">
+    </div>
+    <div id="dmScanStatus" style="font-size:.82rem;min-height:18px;margin-bottom:8px"></div>
     <div class="grid2">
       <div class="field"><label>Fulde navn *</label><input id="dm_name" placeholder="Navn"></div>
       <div class="field"><label>CPR / ID</label><input id="dm_cpr" placeholder="CPR"></div>
@@ -820,11 +828,10 @@ tr:hover td{background:var(--bg3);}
   <div class="modal">
     <h3 id="uModalTitle">Opret Bruger</h3>
     <input type="hidden" id="um_editId">
-    <div class="field"><label>Brugernavn *</label><input id="um_username" placeholder="Brugernavn"></div>
-    <div class="field"><label>Fulde navn</label><input id="um_name" placeholder="For- og efternavn"></div>
+    <div class="field"><label>Fulde navn *</label><input id="um_name" placeholder="For- og efternavn"></div>
     <div class="field"><label>Adgangskode *</label><input type="password" id="um_pass" placeholder="Min. 6 tegn"></div>
     <div class="field"><label>Rolle</label>
-      <select id="um_role"><option value="user">Biladministrator</option><option value="admin">Administrator</option></select>
+      <select id="um_role"><option value="user">Bruger</option><option value="admin">Administrator</option><option value="super">Superbruger</option></select>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('userModal')">Annuller</button>
@@ -867,7 +874,7 @@ function setData(k,v){
 }
 
 function initDefaults(){
-  if(!STORE.get('users')) setData('users',[{id:'1',username:'admin',name:'Administrator',password:'pilot2024',role:'admin'}]);
+  if(!STORE.get('users')) setData('users',[{id:'1',name:'Superbruger',password:'super2024',role:'super'}]);
   if(!STORE.get('settings')) setData('settings',{name:'Inspectra',cvr:'',addr:'',city:'',phone:'',email:'',gebyr:'500'});
 }
 initDefaults();
@@ -884,9 +891,10 @@ function activateApp(user){
   currentUser=user;
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').style.display='block';
-  document.getElementById('currentUserLabel').textContent=user.name||user.username;
+  document.getElementById('currentUserLabel').textContent=user.name||'Bruger';
   initTheme();
-  if(user.role==='admin') document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
+  if(user.role==='super'||user.role==='admin') document.querySelectorAll('.admin-only').forEach(el=>el.style.display='');
+  if(user.role==='super') document.querySelectorAll('.super-only').forEach(el=>el.style.display='');
   loadSettings(); renderDashboard(); renderVehicles(); renderContracts();
   renderDrivers(); populateDriverSelect(); populateVehicleSelect();
 }
@@ -919,11 +927,11 @@ function initTheme(){
 }
 
 function doLogin(){
-  const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value;
-  const user=getData('users').find(x=>x.username===u&&x.password===p);
+  const user=getData('users').find(x=>x.password===p);
   if(!user){document.getElementById('loginErr').style.display='block';return;}
-  localStorage.setItem('pua_session',JSON.stringify({username:user.username,token:_hashSession(u,p)}));
+  document.getElementById('loginErr').style.display='none';
+  localStorage.setItem('pua_session',JSON.stringify({id:user.id,token:_hashSession(user.id,p)}));
   activateApp(user);
 }
 function doLogout(){
@@ -931,20 +939,18 @@ function doLogout(){
   localStorage.removeItem('pua_session');
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('loginUser').value='';
   document.getElementById('loginPass').value='';
   document.getElementById('loginErr').style.display='none';
 }
-function _hashSession(u,p){
-  // Simpel hash — ikke kryptografisk sikker, men bedre end klartekst
-  var s=u+':'+p;var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}
+function _hashSession(uid,p){
+  var s=uid+':'+p;var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}
   return 'sess_'+Math.abs(h).toString(36);
 }
 function tryAutoLogin(){
   try{
     const sess=JSON.parse(localStorage.getItem('pua_session'));
     if(!sess) return false;
-    const user=getData('users').find(x=>x.username===sess.username&&_hashSession(x.username,x.password)===sess.token);
+    const user=getData('users').find(x=>x.id===sess.id&&_hashSession(x.id,x.password)===sess.token);
     if(!user){localStorage.removeItem('pua_session');return false;}
     activateApp(user); return true;
   }catch{return false;}
@@ -1035,42 +1041,26 @@ async function fetchLeaserCVR(){
 }
 
 // ════════════════════════════════════════════════
-//  AI SCANNING
+//  AI SCANNING (Step 2 — Lejer felter)
 // ════════════════════════════════════════════════
 async function scanDocument(event,docType){
   const file=event.target.files[0];if(!file)return;event.target.value='';
   const statusEl=document.getElementById('scanStatus');
   statusEl.textContent='⏳ Scanner '+(docType==='license'?'kørekort':'VUB-kort')+'...';
-  const reader=new FileReader();
-  reader.onload=async(e)=>{
-    const base64=e.target.result.split(',')[1];
-    const prompt=docType==='license'
-      ?'Kørekort. Svar KUN med JSON: {"name":"","license_number":"","nationality":"","address":""}'
-      :'VUB-kort. Svar KUN med JSON: {"vub_number":"","name":"","tilladelse_number":""}';
-    try{
-      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,
-          messages:[{role:'user',content:[
-            {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:base64}},
-            {type:'text',text:prompt}
-          ]}]})
-      });
-      const data=await res.json();
-      const parsed=JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
-      if(docType==='license'){
-        if(parsed.name) document.getElementById('d_name').value=parsed.name;
-        if(parsed.license_number) document.getElementById('d_license').value=parsed.license_number;
-        if(parsed.nationality) document.getElementById('d_nat').value=parsed.nationality;
-        if(parsed.address) document.getElementById('d_addr').value=parsed.address;
-      }else{
-        if(parsed.vub_number) document.getElementById('d_vub')?document.getElementById('d_vub').value=parsed.vub_number:'';
-        if(parsed.tilladelse_number) document.getElementById('d_tilladelse').value=parsed.tilladelse_number;
-      }
-      statusEl.textContent='✅ Scannet';statusEl.style.color='var(--green)';
-    }catch{statusEl.textContent='❌ Fejlede';statusEl.style.color='var(--red)';}
-    setTimeout(()=>{statusEl.textContent='';statusEl.style.color='';},4000);
-  };
-  reader.readAsDataURL(file);
+  statusEl.style.color='var(--accent)';
+  try{
+    if(docType==='license'){
+      const parsed=await geminiScanCard(file,'korekort');
+      const fullName=((parsed.firstname||'')+' '+(parsed.surname||'')).trim();
+      if(fullName) document.getElementById('d_name').value=fullName;
+      if(parsed.licenseNo) document.getElementById('d_license').value=parsed.licenseNo;
+    }else{
+      const parsed=await geminiScanCard(file,'vub');
+      if(parsed.certNo&&document.getElementById('d_vub')) document.getElementById('d_vub').value=parsed.certNo;
+    }
+    statusEl.textContent='✅ Scannet';statusEl.style.color='var(--green)';
+  }catch(e){statusEl.textContent='❌ Fejl: '+(e.message||'');statusEl.style.color='var(--red)';}
+  setTimeout(()=>{statusEl.textContent='';statusEl.style.color='';},4000);
 }
 
 // ════════════════════════════════════════════════
@@ -1108,15 +1098,19 @@ function renderDriversContainer(){
           ${driverOpts}
         </select>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;font-weight:700;color:var(--accent)">Fører ${i+1}</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-blue btn-sm" onclick="document.getElementById('scanDrvLic_${i}').click()">📷 Scan kørekort</button>
-          <span id="drvScan_${i}" style="font-size:.8rem;color:var(--text2)"></span>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-blue btn-sm" onclick="openDriverScan(${i},'korekort')">🪪 Kørekort</button>
+          <button class="btn btn-blue btn-sm" onclick="openDriverScan(${i},'sundhedskort')">🏥 Sundhedskort</button>
+          <button class="btn btn-blue btn-sm" onclick="openDriverScan(${i},'vub')">🚛 VUB</button>
           ${i>0?`<button class="btn btn-red btn-sm" onclick="removeDriver(${i})">Fjern</button>`:''}
         </div>
       </div>
-      <input type="file" id="scanDrvLic_${i}" accept="image/*" capture="environment" style="display:none" onchange="scanDriverDoc(event,${i})">
+      <input type="file" id="scanDrv_korekort_${i}" accept="image/*" capture="environment" style="display:none" onchange="handleDriverScan(event,${i},'korekort')">
+      <input type="file" id="scanDrv_sundhedskort_${i}" accept="image/*" capture="environment" style="display:none" onchange="handleDriverScan(event,${i},'sundhedskort')">
+      <input type="file" id="scanDrv_vub_${i}" accept="image/*" capture="environment" style="display:none" onchange="handleDriverScan(event,${i},'vub')">
+      <div id="drvScanStatus_${i}" style="font-size:.82rem;min-height:18px;margin-bottom:6px"></div>
       <div class="grid2">
         <div class="field"><label>Fulde navn *</label><input id="drv_name_${i}" value="${d.name||''}" placeholder="For- og efternavn" oninput="updateDriver(${i},'name',this.value)"></div>
         <div class="field"><label>CPR / ID</label><input id="drv_cpr_${i}" value="${d.cpr||''}" placeholder="CPR-nr." oninput="updateDriver(${i},'cpr',this.value)"></div>
@@ -1134,34 +1128,6 @@ function renderDriversContainer(){
 function updateDriver(i,f,v){if(extraDrivers[i])extraDrivers[i][f]=v;}
 function addExtraDriver(){extraDrivers.push({name:'',cpr:'',addr:'',city:'',phone:'',email:'',license:'',vub:'',nat:''});renderDriversContainer();}
 function removeDriver(i){extraDrivers.splice(i,1);renderDriversContainer();}
-async function scanDriverDoc(event,idx){
-  const file=event.target.files[0];if(!file)return;event.target.value='';
-  const statusEl=document.getElementById('drvScan_'+idx);
-  if(statusEl){statusEl.textContent='⏳ Scanner...';statusEl.style.color='var(--text2)';}
-  const reader=new FileReader();
-  reader.onload=async(e)=>{
-    const b64=e.target.result.split(',')[1];
-    try{
-      const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,
-          messages:[{role:'user',content:[
-            {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:b64}},
-            {type:'text',text:'Kørekort. Svar KUN med JSON: {"name":"","license_number":"","nationality":"","address":""}'}
-          ]}]})
-      });
-      const data=await res.json();
-      const parsed=JSON.parse(data.content[0].text.replace(/```json|```/g,'').trim());
-      if(parsed.name){extraDrivers[idx].name=parsed.name;document.getElementById('drv_name_'+idx).value=parsed.name;}
-      if(parsed.license_number){extraDrivers[idx].license=parsed.license_number;document.getElementById('drv_license_'+idx).value=parsed.license_number;}
-      if(parsed.nationality){extraDrivers[idx].nat=parsed.nationality;document.getElementById('drv_nat_'+idx).value=parsed.nationality;}
-      if(parsed.address){extraDrivers[idx].addr=parsed.address;document.getElementById('drv_addr_'+idx).value=parsed.address;}
-      if(statusEl){statusEl.textContent='✅ Scannet';statusEl.style.color='var(--green)';}
-    }catch{if(statusEl){statusEl.textContent='❌ Fejl';statusEl.style.color='var(--red)';}}
-    setTimeout(()=>{if(statusEl){statusEl.textContent='';statusEl.style.color='';}},4000);
-  };
-  reader.readAsDataURL(file);
-}
-
 // ════════════════════════════════════════════════
 //  WIZARD
 // ════════════════════════════════════════════════
@@ -1326,7 +1292,7 @@ function finalizeContract(){
     },
     photos:contractPhotos.slice(),
     signatures:{lessor:sigL,lessee:sigD},
-    createdBy:currentUser?currentUser.username:'admin',
+    createdBy:currentUser?currentUser.name:'admin',
   };
   const updated=vehicles.map(v=>v.id===vid?{...v,status:'rented',currentContract:id}:v);
   try{
@@ -1892,8 +1858,8 @@ function fillDriverFromSelect(){
 function renderUsers(){
   const users=getData('users');
   document.getElementById('usersBody').innerHTML=users.map(u=>`<tr>
-    <td><b>${u.username}</b></td><td>${u.name||'—'}</td>
-    <td>${u.role==='admin'?'<span class="badge badge-yellow">Administrator</span>':'<span class="badge badge-blue">Biladministrator</span>'}</td>
+    <td><b>${u.name||'—'}</b></td><td>${u.role==='super'?'Superbruger':u.role==='admin'?'Administrator':'Bruger'}</td>
+    <td>${u.role==='super'?'<span class="badge badge-red">Super</span>':u.role==='admin'?'<span class="badge badge-yellow">Admin</span>':'<span class="badge badge-blue">Bruger</span>'}</td>
     <td>
       <button class="btn btn-ghost btn-sm" onclick="openUserModal('${u.id}')">Rediger</button>
       ${u.id!=='1'?`<button class="btn btn-red btn-sm" onclick="deleteUser('${u.id}')">Slet</button>`:''}
@@ -1903,22 +1869,23 @@ function renderUsers(){
 function openUserModal(id){
   document.getElementById('uModalTitle').textContent=id?'Rediger Bruger':'Opret Bruger';
   document.getElementById('um_editId').value=id||'';
-  document.getElementById('um_username').value='';document.getElementById('um_name').value='';
+  document.getElementById('um_name').value='';
   document.getElementById('um_pass').value='';document.getElementById('um_role').value='user';
   if(id){
     const u=getData('users').find(x=>x.id===id);
-    if(u){document.getElementById('um_username').value=u.username;document.getElementById('um_name').value=u.name||'';document.getElementById('um_role').value=u.role;}
+    if(u){document.getElementById('um_name').value=u.name||'';document.getElementById('um_role').value=u.role;}
   }
   openModal('userModal');
 }
 function saveUser(){
   const id=document.getElementById('um_editId').value;
-  const username=document.getElementById('um_username').value.trim();
+  const name=document.getElementById('um_name').value.trim();
   const pass=document.getElementById('um_pass').value;
-  if(!username){showToast('Brugernavn er påkrævet','error');return;}
+  if(!name){showToast('Navn er påkrævet','error');return;}
+  if(!id&&!pass){showToast('Adgangskode er påkrævet for nye brugere','error');return;}
   const users=getData('users');
-  if(!id&&users.find(u=>u.username===username)){showToast('Brugernavn i brug','error');return;}
-  const obj={id:id||('U'+Date.now()),username,name:document.getElementById('um_name').value,
+  if(pass&&users.find(u=>u.password===pass&&u.id!==id)){showToast('Adgangskode allerede i brug af en anden bruger','error');return;}
+  const obj={id:id||('U'+Date.now()),name,
     password:pass||(id?(users.find(u=>u.id===id)||{}).password:''),role:document.getElementById('um_role').value};
   if(id){const i=users.findIndex(u=>u.id===id);if(i>=0)users[i]={...users[i],...obj,password:pass||users[i].password};}
   else users.push(obj);
@@ -2200,6 +2167,131 @@ async function importDriversExcel(event){
     logEl.innerHTML+=`<br><b>Færdig! ${added} chauffører tilføjet.</b>`;
     logEl.scrollTop=logEl.scrollHeight;
   }catch(e){logEl.innerHTML='❌ Fejl ved import: '+e.message;}
+}
+
+// ════════════════════════════════════════════════
+//  KORTSCANNER — Gemini AI Integration
+// ════════════════════════════════════════════════
+var GEMINI_KEY = "AIzaSyA4W3yiqPJicnj-Wvj7h6NF-MSXHxpnTrg";
+var GEMINI_MODELS = ["gemini-2.5-flash","gemini-2.0-flash","gemini-2.0-flash-lite"];
+var _geminiModelIdx = 0;
+
+var SCAN_TYPES = {
+  korekort: {
+    label:"Kørekort", icon:"🪪",
+    fields:["surname","firstname","birthdate","licenseNo","categories","expiryDate"],
+    prompt:'Analyser dette danske KØREKORT (EU-format). Returner KUN et JSON-objekt:\n{"surname":"","firstname":"","birthdate":"","licenseNo":"","categories":"","expiryDate":""}\nVIGTIGT: Returner KUN valid JSON. Ingen markdown, ingen backticks.'
+  },
+  sundhedskort: {
+    label:"Sundhedskort", icon:"🏥",
+    fields:["fullName","cpr","address","postalCity"],
+    prompt:'Analyser dette danske SUNDHEDSKORT (det gule sygesikringskort). Returner KUN et JSON-objekt:\n{"fullName":"","cpr":"","address":"","postalCity":""}\nVIGTIGT: Returner KUN valid JSON. Ingen markdown, ingen backticks.'
+  },
+  vub: {
+    label:"VUB-bevis", icon:"🚛",
+    fields:["surname","firstname","certNo","expiryDate"],
+    prompt:'Analyser dette danske VAREBILSCHAUFFØR-UDDANNELSESBEVIS (VUB-kort). Returner KUN et JSON-objekt:\n{"surname":"","firstname":"","certNo":"","expiryDate":""}\nVIGTIGT: Returner KUN valid JSON. Ingen markdown, ingen backticks.'
+  }
+};
+
+async function geminiScanCard(file, scanType){
+  var type = SCAN_TYPES[scanType];
+  if(!type) throw new Error('Ukendt korttype');
+  var base64 = await new Promise(function(res,rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result.split(',')[1]); };
+    r.onerror = function(){ rej(new Error('Kunne ikke læse filen')); };
+    r.readAsDataURL(file);
+  });
+  var body = {contents:[{parts:[
+    {inlineData:{mimeType:file.type||'image/jpeg',data:base64}},
+    {text:type.prompt}
+  ]}]};
+  var data;
+  for(var attempt=0;attempt<GEMINI_MODELS.length;attempt++){
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODELS[_geminiModelIdx]+':generateContent?key='+GEMINI_KEY;
+    var res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    data = await res.json();
+    if(data.error&&(data.error.message||'').match(/Quota exceeded|not found|not supported/i)){
+      _geminiModelIdx=(_geminiModelIdx+1)%GEMINI_MODELS.length;continue;
+    }
+    break;
+  }
+  if(data.error) throw new Error('API-fejl: '+(data.error.message||'Ukendt'));
+  var text = data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]?data.candidates[0].content.parts[0].text:'';
+  if(!text) throw new Error('Intet svar fra AI');
+  var clean = text.replace(/```json|```/g,'').trim();
+  return JSON.parse(clean);
+}
+
+// ── Scan for multi-driver (Step 3) ───────────────
+function openDriverScan(idx, scanType){
+  var inputId = 'scanDrv_'+scanType+'_'+idx;
+  document.getElementById(inputId).click();
+}
+async function handleDriverScan(event, idx, scanType){
+  var file=event.target.files&&event.target.files[0];if(!file)return;event.target.value='';
+  var statusEl=document.getElementById('drvScanStatus_'+idx);
+  if(statusEl){statusEl.textContent='⏳ Scanner '+SCAN_TYPES[scanType].label+'...';statusEl.style.color='var(--accent)';}
+  try{
+    var parsed=await geminiScanCard(file, scanType);
+    if(scanType==='korekort'){
+      var fullName=((parsed.firstname||'')+' '+(parsed.surname||'')).trim();
+      if(fullName){extraDrivers[idx].name=fullName;var el=document.getElementById('drv_name_'+idx);if(el){el.value=fullName;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+      if(parsed.licenseNo){extraDrivers[idx].license=parsed.licenseNo;var el=document.getElementById('drv_license_'+idx);if(el){el.value=parsed.licenseNo;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+      if(parsed.birthdate){extraDrivers[idx].nat=parsed.birthdate;/* kan bruges til fødselsdato-feltet */}
+    }
+    if(scanType==='sundhedskort'){
+      if(parsed.fullName){extraDrivers[idx].name=parsed.fullName;var el=document.getElementById('drv_name_'+idx);if(el){el.value=parsed.fullName;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+      if(parsed.cpr){extraDrivers[idx].cpr=parsed.cpr;var el=document.getElementById('drv_cpr_'+idx);if(el){el.value=parsed.cpr;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+      if(parsed.address){extraDrivers[idx].addr=parsed.address;var el=document.getElementById('drv_addr_'+idx);if(el){el.value=parsed.address;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+      if(parsed.postalCity){extraDrivers[idx].city=parsed.postalCity;var el=document.getElementById('drv_city_'+idx);if(el){el.value=parsed.postalCity;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+    }
+    if(scanType==='vub'){
+      var fullName=((parsed.firstname||'')+' '+(parsed.surname||'')).trim();
+      if(fullName&&!extraDrivers[idx].name){extraDrivers[idx].name=fullName;var el=document.getElementById('drv_name_'+idx);if(el){el.value=fullName;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+      if(parsed.certNo){extraDrivers[idx].vub=parsed.certNo;var el=document.getElementById('drv_vub_'+idx);if(el){el.value=parsed.certNo;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}}
+    }
+    if(statusEl){statusEl.textContent='✅ '+SCAN_TYPES[scanType].label+' scannet';statusEl.style.color='var(--green)';}
+  }catch(e){
+    if(statusEl){statusEl.textContent='❌ Fejl: '+(e.message||'Ukendt');statusEl.style.color='var(--red)';}
+  }
+  setTimeout(function(){if(statusEl){statusEl.textContent='';statusEl.style.color='';}},4000);
+}
+
+// ── Scan for driver modal (Lejere page) ──────────
+function openDriverModalScan(scanType){
+  document.getElementById('dmScan_'+scanType).click();
+}
+async function handleDriverModalScan(event, scanType){
+  var file=event.target.files&&event.target.files[0];if(!file)return;event.target.value='';
+  var statusEl=document.getElementById('dmScanStatus');
+  if(statusEl){statusEl.textContent='⏳ Scanner '+SCAN_TYPES[scanType].label+'...';statusEl.style.color='var(--accent)';}
+  try{
+    var parsed=await geminiScanCard(file, scanType);
+    function fillField(id,val){
+      var el=document.getElementById(id);
+      if(el&&val){el.value=val;el.style.background='rgba(16,185,129,0.12)';setTimeout(function(){el.style.background='';},2500);}
+    }
+    if(scanType==='korekort'){
+      fillField('dm_name',((parsed.firstname||'')+' '+(parsed.surname||'')).trim());
+      fillField('dm_license',parsed.licenseNo);
+    }
+    if(scanType==='sundhedskort'){
+      fillField('dm_name',parsed.fullName);
+      fillField('dm_cpr',parsed.cpr);
+      fillField('dm_addr',parsed.address);
+      fillField('dm_city',parsed.postalCity);
+    }
+    if(scanType==='vub'){
+      if(!document.getElementById('dm_name').value) fillField('dm_name',((parsed.firstname||'')+' '+(parsed.surname||'')).trim());
+      fillField('dm_vub',parsed.certNo);
+    }
+    if(statusEl){statusEl.textContent='✅ '+SCAN_TYPES[scanType].label+' scannet';statusEl.style.color='var(--green)';}
+  }catch(e){
+    if(statusEl){statusEl.textContent='❌ Fejl';statusEl.style.color='var(--red)';}
+  }
+  setTimeout(function(){if(statusEl){statusEl.textContent='';statusEl.style.color='';}},4000);
 }
 
 // ════════════════════════════════════════════════
