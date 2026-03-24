@@ -874,7 +874,35 @@ function setData(k,v){
 }
 
 function initDefaults(){
-  if(!STORE.get('users')) setData('users',[{id:'1',name:'Superbruger',password:'super2024',role:'super'}]);
+  // Migrér gamle brugere (username-baseret → password-only)
+  var users = STORE.get('users');
+  if(users && users.length){
+    var migrated = false;
+    // Tjek om det er det gamle format (har username-felt)
+    if(users[0].username !== undefined){
+      users.forEach(function(u){
+        if(!u.role || u.role==='admin') u.role = (u.username==='admin'||u.id==='1') ? 'super' : 'admin';
+        if(!u.name && u.username) u.name = u.username;
+        delete u.username;
+      });
+      migrated = true;
+    }
+    // Sørg for at der altid er en superbruger
+    var hasSuper = users.some(function(u){ return u.role==='super'; });
+    if(!hasSuper){
+      // Opgradér den første bruger til super, eller opret en ny
+      if(users.length > 0 && users[0].id === '1'){
+        users[0].role = 'super';
+        if(!users[0].name) users[0].name = 'Superbruger';
+      } else {
+        users.unshift({id:'1',name:'Superbruger',password:'super2024',role:'super'});
+      }
+      migrated = true;
+    }
+    if(migrated) setData('users', users);
+  } else {
+    setData('users',[{id:'1',name:'Superbruger',password:'super2024',role:'super'}]);
+  }
   if(!STORE.get('settings')) setData('settings',{name:'Inspectra',cvr:'',addr:'',city:'',phone:'',email:'',gebyr:'500'});
 }
 initDefaults();
@@ -950,7 +978,15 @@ function tryAutoLogin(){
   try{
     const sess=JSON.parse(localStorage.getItem('pua_session'));
     if(!sess) return false;
-    const user=getData('users').find(x=>x.id===sess.id&&_hashSession(x.id,x.password)===sess.token);
+    // Understøt både nyt format (id) og gammelt format (username)
+    let user;
+    if(sess.id){
+      user=getData('users').find(x=>x.id===sess.id&&_hashSession(x.id,x.password)===sess.token);
+    } else if(sess.username){
+      // Gammelt session-format — ryd og kræv nyt login
+      localStorage.removeItem('pua_session');
+      return false;
+    }
     if(!user){localStorage.removeItem('pua_session');return false;}
     activateApp(user); return true;
   }catch{return false;}
