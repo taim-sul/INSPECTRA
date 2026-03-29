@@ -491,8 +491,8 @@ tr:hover td{background:var(--bg3);}
         <button class="btn btn-blue btn-sm" id="btnScanVUB" onclick="document.getElementById('scanVUBInput').click()">📷 Scan VUB-kort</button>
         <span id="scanStatus" style="font-size:.8rem;color:var(--text2);align-self:center"></span>
       </div>
-      <input type="file" id="scanLicenseInput" accept="image/*" capture="environment" style="display:none" onchange="scanDocument(event,'license')">
-      <input type="file" id="scanVUBInput" accept="image/*" capture="environment" style="display:none" onchange="scanDocument(event,'vub')">
+      <input type="file" id="scanLicenseInput" accept="image/*" style="display:none" onchange="scanDocument(event,'license')">
+      <input type="file" id="scanVUBInput" accept="image/*" style="display:none" onchange="scanDocument(event,'vub')">
       <div class="grid2">
         <div class="field"><label id="label_d_name">Fulde navn *</label><input id="d_name" placeholder="For- og efternavn"></div>
         <div class="field" id="field_d_cpr"><label>CPR / ID</label><input id="d_cpr" placeholder="CPR-nr. eller ID"></div>
@@ -565,7 +565,7 @@ tr:hover td{background:var(--bg3);}
           <div style="font-size:1.8rem">📷</div><div>Tilføj billede</div>
         </div>
       </div>
-      <input type="file" id="photoInput" accept="image/*" capture="environment" multiple style="display:none" onchange="handlePhotos(event)">
+      <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="handlePhotos(event)">
       <div class="mt-16 flex gap-8">
         <button class="btn btn-ghost" onclick="goStep(4)">← Tilbage</button>
         <button class="btn btn-accent" onclick="goStep(6)">Næste →</button>
@@ -800,9 +800,9 @@ tr:hover td{background:var(--bg3);}
       <button class="btn btn-blue btn-sm" onclick="openDriverModalScan('korekort')">🪪 Scan Kørekort</button>
       <button class="btn btn-blue btn-sm" onclick="openDriverModalScan('sundhedskort')">🏥 Scan Sundhedskort</button>
       <button class="btn btn-blue btn-sm" onclick="openDriverModalScan('vub')">🚛 Scan VUB</button>
-      <input type="file" id="dmScan_korekort" accept="image/*" capture="environment" style="display:none" onchange="handleDriverModalScan(event,'korekort')">
-      <input type="file" id="dmScan_sundhedskort" accept="image/*" capture="environment" style="display:none" onchange="handleDriverModalScan(event,'sundhedskort')">
-      <input type="file" id="dmScan_vub" accept="image/*" capture="environment" style="display:none" onchange="handleDriverModalScan(event,'vub')">
+      <input type="file" id="dmScan_korekort" accept="image/*" style="display:none" onchange="handleDriverModalScan(event,'korekort')">
+      <input type="file" id="dmScan_sundhedskort" accept="image/*" style="display:none" onchange="handleDriverModalScan(event,'sundhedskort')">
+      <input type="file" id="dmScan_vub" accept="image/*" style="display:none" onchange="handleDriverModalScan(event,'vub')">
     </div>
     <div id="dmScanStatus" style="font-size:.82rem;min-height:18px;margin-bottom:8px"></div>
     <div class="grid2">
@@ -1163,9 +1163,9 @@ function renderDriversContainer(){
           ${i>0?`<button class="btn btn-red btn-sm" onclick="removeDriver(${i})">Fjern</button>`:''}
         </div>
       </div>
-      <input type="file" id="scanDrv_korekort_${i}" accept="image/*" capture="environment" style="display:none" onchange="handleDriverScan(event,${i},'korekort')">
-      <input type="file" id="scanDrv_sundhedskort_${i}" accept="image/*" capture="environment" style="display:none" onchange="handleDriverScan(event,${i},'sundhedskort')">
-      <input type="file" id="scanDrv_vub_${i}" accept="image/*" capture="environment" style="display:none" onchange="handleDriverScan(event,${i},'vub')">
+      <input type="file" id="scanDrv_korekort_${i}" accept="image/*" style="display:none" onchange="handleDriverScan(event,${i},'korekort')">
+      <input type="file" id="scanDrv_sundhedskort_${i}" accept="image/*" style="display:none" onchange="handleDriverScan(event,${i},'sundhedskort')">
+      <input type="file" id="scanDrv_vub_${i}" accept="image/*" style="display:none" onchange="handleDriverScan(event,${i},'vub')">
       <div id="drvScanStatus_${i}" style="font-size:.82rem;min-height:18px;margin-bottom:6px"></div>
       <div class="grid2">
         <div class="field"><label>Fulde navn *</label><input id="drv_name_${i}" value="${d.name||''}" placeholder="For- og efternavn" oninput="updateDriver(${i},'name',this.value)"></div>
@@ -1455,7 +1455,8 @@ function fmtD(s){if(!s)return'—';const d=new Date(s);if(isNaN(d))return s;retu
 //  PRINT + EMAIL (PDF vedhæftet)
 // ════════════════════════════════════════════════
 function printContract(){
-  const html=document.getElementById('printArea')?document.getElementById('printArea').outerHTML:buildContractHTML(currentContractData);
+  // Brug altid buildContractHTML med den aktuelle kontrakt — printArea kan være forældet
+  const html=buildContractHTML(currentContractData);
   const fullHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}table td,table th{border:1px solid #ccc;padding:6px;font-size:12px}h2{text-align:center}.sig-block{display:flex;gap:24px;margin-top:24px}.sig-line{flex:1;border-top:1px solid #333;padding-top:6px}</style></head><body>'+html+'<scr'+'ipt>window.onload=function(){window.print()}<'+'/scr'+'ipt></body></html>';
   const blob=new Blob([fullHtml],{type:'text/html'});
   const url=URL.createObjectURL(blob);
@@ -1465,7 +1466,11 @@ function printContract(){
 }
 function printContractById(){
   const c=getData('contracts').find(x=>x.id===currentContractId);
-  if(c){currentContractData=c;printContract();}
+  if(!c)return;
+  currentContractData=c;
+  // Ryd printArea så printContract bruger den korrekte kontrakt
+  var pa=document.getElementById('printArea');if(pa)pa.innerHTML='';
+  printContract();
 }
 
 async function emailContract(){
@@ -1644,6 +1649,7 @@ function renderContracts(){
 function openContractDetail(id){
   currentContractId=id;
   const c=getData('contracts').find(x=>x.id===id);if(!c)return;
+  currentContractData=c;
   document.getElementById('contractDetailContent').innerHTML=buildContractHTML(c);
   document.getElementById('returnBtn').style.display=c.status==='active'?'':'none';
   openModal('contractDetailModal');
