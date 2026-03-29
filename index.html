@@ -16,11 +16,15 @@
 <script>
 // ── Service Worker registrering ─────────────────
 if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js')
-      .then(r => console.log('[PWA] Service Worker registreret:', r.scope))
-      .catch(e => console.warn('[PWA] SW fejl:', e));
+  // Ryd gamle service worker caches der kan servere forældet kode
+  navigator.serviceWorker.getRegistrations().then(function(registrations){
+    registrations.forEach(function(reg){ reg.unregister(); });
   });
+  if(window.caches){
+    caches.keys().then(function(names){
+      names.forEach(function(name){ caches.delete(name); });
+    });
+  }
 }
 
 // ── Install-prompt ───────────────────────────────
@@ -875,7 +879,7 @@ function setData(k,v){
 }
 
 function initDefaults(){
-  ensureSuperUser();
+  try{ ensureSuperUser(); }catch(e){ console.error('[initDefaults] ensureSuperUser fejl:', e); }
   if(!STORE.get('settings')) setData('settings',{name:'Inspectra',cvr:'',addr:'',city:'',phone:'',email:'',gebyr:'500'});
 }
 
@@ -908,7 +912,7 @@ function ensureSuperUser(){
   }
   if(migrated) setData('users', users);
 }
-initDefaults();
+try{ initDefaults(); }catch(e){ console.error('[INIT] initDefaults fejl:', e); }
 
 let currentUser=null, currentStep=1, contractPhotos=[], sigCtx={}, drawing={};
 let currentContractId=null, currentContractData={};
@@ -2236,7 +2240,7 @@ async function importDriversExcel(event){
 // ════════════════════════════════════════════════
 // ── GEMINI PROXY (API-nøglen er gemt sikkert i Cloudflare Worker) ──
 // VIGTIGT: Erstat denne URL med din egen Cloudflare Worker URL efter deploy
-var GEMINI_PROXY_URL = https:"//gemini-proxy.taim.workers.dev/";
+var GEMINI_PROXY_URL = "https://gemini-proxy-7pv.pages.dev";
 var GEMINI_MODELS = ["gemini-2.5-flash","gemini-2.0-flash","gemini-2.0-flash-lite"];
 var _geminiModelIdx = 0;
 
