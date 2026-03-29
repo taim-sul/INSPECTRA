@@ -2240,7 +2240,7 @@ async function importDriversExcel(event){
 // ════════════════════════════════════════════════
 // ── GEMINI PROXY (API-nøglen er gemt sikkert i Cloudflare Worker) ──
 // VIGTIGT: Erstat denne URL med din egen Cloudflare Worker URL efter deploy
-var GEMINI_PROXY_URL = "https://gemini-proxy-7pv.pages.dev";
+var GEMINI_PROXY_URL = "https://gemini-proxy.taim.workers.dev";
 var GEMINI_MODELS = ["gemini-2.5-flash","gemini-2.0-flash","gemini-2.0-flash-lite"];
 var _geminiModelIdx = 0;
 
@@ -2277,20 +2277,36 @@ async function geminiScanCard(file, scanType){
   ]}]};
   var data;
   for(var attempt=0;attempt<GEMINI_MODELS.length;attempt++){
-    var res = await fetch(GEMINI_PROXY_URL, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:GEMINI_MODELS[_geminiModelIdx], contents:body.contents})
-    });
-    data = await res.json();
+    console.log('[KortScanner] Sender til proxy:', GEMINI_PROXY_URL, 'model:', GEMINI_MODELS[_geminiModelIdx]);
+    var res;
+    try{
+      res = await fetch(GEMINI_PROXY_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:GEMINI_MODELS[_geminiModelIdx], contents:body.contents})
+      });
+    }catch(fetchErr){
+      console.error('[KortScanner] Fetch fejl:', fetchErr);
+      throw new Error('Kan ikke nå proxy: '+fetchErr.message);
+    }
+    console.log('[KortScanner] Response status:', res.status);
+    if(!res.ok && res.status !== 200){
+      var errText = '';
+      try{ errText = await res.text(); }catch(e){}
+      console.error('[KortScanner] Proxy svar:', res.status, errText);
+      if(res.status === 403) throw new Error('Proxy afviste request (origin ikke tilladt)');
+      if(res.status === 500) throw new Error('Proxy fejl: '+(errText||'Tjek GEMINI_KEY i Cloudflare'));
+    }
+    data = typeof res.json === 'function' ? await res.clone().json().catch(function(){ return {error:{message:'Ugyldigt JSON svar'}}; }) : {error:{message:'Intet svar'}};
+    console.log('[KortScanner] Data:', JSON.stringify(data).substring(0,200));
     if(data.error&&(data.error.message||'').match(/Quota exceeded|not found|not supported/i)){
       _geminiModelIdx=(_geminiModelIdx+1)%GEMINI_MODELS.length;continue;
     }
     break;
   }
-  if(data.error) throw new Error('API-fejl: '+(data.error.message||'Ukendt'));
+  if(data.error) throw new Error('AI fejl: '+(data.error.message||data.error||'Ukendt'));
   var text = data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]?data.candidates[0].content.parts[0].text:'';
-  if(!text) throw new Error('Intet svar fra AI');
+  if(!text) throw new Error('Intet svar fra AI — prøv et tydeligere billede');
   var clean = text.replace(/```json|```/g,'').trim();
   return JSON.parse(clean);
 }
