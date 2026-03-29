@@ -2234,7 +2234,9 @@ async function importDriversExcel(event){
 // ════════════════════════════════════════════════
 //  KORTSCANNER — Gemini AI Integration
 // ════════════════════════════════════════════════
-var GEMINI_KEY = "AIzaSyBdJMraJUUIDP-MAB6sONemSNvvXCOzYi0";
+// ── GEMINI PROXY (API-nøglen er gemt sikkert i Cloudflare Worker) ──
+// VIGTIGT: Erstat denne URL med din egen Cloudflare Worker URL efter deploy
+var GEMINI_PROXY_URL = "https://gemini-proxy.taim-sul.workers.dev";
 var GEMINI_MODELS = ["gemini-2.5-flash","gemini-2.0-flash","gemini-2.0-flash-lite"];
 var _geminiModelIdx = 0;
 
@@ -2271,8 +2273,11 @@ async function geminiScanCard(file, scanType){
   ]}]};
   var data;
   for(var attempt=0;attempt<GEMINI_MODELS.length;attempt++){
-    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODELS[_geminiModelIdx]+':generateContent?key='+GEMINI_KEY;
-    var res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var res = await fetch(GEMINI_PROXY_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:GEMINI_MODELS[_geminiModelIdx], contents:body.contents})
+    });
     data = await res.json();
     if(data.error&&(data.error.message||'').match(/Quota exceeded|not found|not supported/i)){
       _geminiModelIdx=(_geminiModelIdx+1)%GEMINI_MODELS.length;continue;
