@@ -745,6 +745,12 @@ tr:hover td{background:var(--bg3);}
       </div>
     </div>
     <div class="card mt-16">
+      <div class="card-title">💾 Lagerforbrug</div>
+      <div id="storageInfo" style="margin-bottom:12px"></div>
+      <button class="btn btn-blue btn-sm" onclick="showStorageInfo()">Opdater</button>
+      <button class="btn btn-ghost btn-sm" onclick="cleanupContractPhotos()">🗑 Ryd billeder fra gamle kontrakter</button>
+    </div>
+    <div class="card mt-16">
       <div class="card-title">⚠️ Nulstil data</div>
       <p style="color:var(--text2);font-size:.88rem;margin-bottom:12px;">Slet alle kontrakter, biler og lejere. Kan ikke fortrydes.</p>
       <button class="btn btn-red" onclick="confirmReset()">Nulstil alle data</button>
@@ -1030,7 +1036,7 @@ function showPage(id,el){
   if(id==='drivers') renderDrivers();
   if(id==='users') renderUsers();
   
-  if(id==='settings') loadFbConfigUI();
+  if(id==='settings'){ loadFbConfigUI(); try{showStorageInfo();}catch(e){} }
 }
 
 // ════════════════════════════════════════════════
@@ -1273,12 +1279,12 @@ function handlePhotos(e){
     r.onload=ev=>{
       const img=new Image();
       img.onload=()=>{
-        const MAX=1200;
+        const MAX=800;
         let w=img.width,h=img.height;
         if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
         const cvs=document.createElement('canvas');cvs.width=w;cvs.height=h;
         cvs.getContext('2d').drawImage(img,0,0,w,h);
-        const compressed=cvs.toDataURL('image/jpeg',0.70);
+        const compressed=cvs.toDataURL('image/jpeg',0.50);
         contractPhotos.push(compressed);renderPhotoGrid();
       };
       img.src=ev.target.result;
@@ -1301,8 +1307,8 @@ function finalizeContract(){
   const vehicles=getData('vehicles');
   const vid=document.getElementById('v_select').value;
   const veh=vehicles.find(v=>v.id===vid);
-  const sigL=document.getElementById('sigLessor').toDataURL();
-  const sigD=document.getElementById('sigLessee').toDataURL();
+  const sigL=document.getElementById('sigLessor').toDataURL('image/jpeg',0.5);
+  const sigD=document.getElementById('sigLessee').toDataURL('image/jpeg',0.5);
   const id='C'+Date.now();
   const existingContracts=getData('contracts');
   const maxNum=existingContracts.reduce((max,c)=>{const n=parseInt((c.num||'').replace('K-',''));return n>max?n:max;},0);
@@ -1357,7 +1363,23 @@ function finalizeContract(){
   const updated=vehicles.map(v=>v.id===vid?{...v,status:'rented',currentContract:id}:v);
   try{
     setData('vehicles',updated);
-    const contracts=getData('contracts');contracts.push(contract);setData('contracts',contracts);
+    const contracts=getData('contracts');contracts.push(contract);
+    try{
+      setData('contracts',contracts);
+    }catch(storageErr){
+      // localStorage fuld — prøv uden billeder
+      console.warn('[Kontrakt] Storage fuld, prøver uden billeder:', storageErr);
+      contract.photos=[];
+      contract.signatures={lessor:'',lessee:''};
+      try{
+        setData('contracts',contracts);
+        showToast('Kontrakt gemt UDEN billeder (lager fuldt)','error');
+      }catch(e2){
+        showToast('Kan ikke gemme — for mange kontrakter i lokalt lager. Slet gamle kontrakter eller ryd billeder.','error');
+        console.error('finalizeContract fatal:', e2);
+        return;
+      }
+    }
   }catch(err){
     showToast('Fejl ved gemning: '+err.message,'error');
     console.error('finalizeContract setData error:',err);
@@ -2379,6 +2401,47 @@ async function handleDriverModalScan(event, scanType){
     if(statusEl){statusEl.textContent='❌ Fejl';statusEl.style.color='var(--red)';}
   }
   setTimeout(function(){if(statusEl){statusEl.textContent='';statusEl.style.color='';}},4000);
+}
+
+// ════════════════════════════════════════════════
+//  STORAGE INFO & CLEANUP
+// ════════════════════════════════════════════════
+function showStorageInfo(){
+  var total=0;
+  for(var key in localStorage){ if(localStorage.hasOwnProperty(key)){ total+=localStorage.getItem(key).length; } }
+  var totalKB=Math.round(total/1024);
+  var totalMB=(total/1048576).toFixed(2);
+  var maxMB=5;
+  var pct=Math.min(100,Math.round((total/1048576/maxMB)*100));
+  var contracts=getData('contracts');
+  var photoCount=0,photoSize=0;
+  contracts.forEach(function(c){
+    (c.photos||[]).forEach(function(p){ photoCount++; photoSize+=p.length; });
+    if(c.signatures){
+      if(c.signatures.lessor) photoSize+=c.signatures.lessor.length;
+      if(c.signatures.lessee) photoSize+=c.signatures.lessee.length;
+    }
+  });
+  var photoMB=(photoSize/1048576).toFixed(2);
+  var barColor=pct>80?'var(--red)':pct>60?'#f59e0b':'var(--green)';
+  document.getElementById('storageInfo').innerHTML=
+    '<div style="margin-bottom:8px"><b>'+totalMB+' MB</b> af '+maxMB+' MB brugt ('+pct+'%)</div>'+
+    '<div style="background:var(--bg2);border-radius:6px;height:12px;overflow:hidden;margin-bottom:8px">'+
+    '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:6px;transition:width .3s"></div></div>'+
+    '<div style="font-size:.82rem;color:var(--text2)">📋 '+contracts.length+' kontrakter · 📷 '+photoCount+' billeder ('+photoMB+' MB)</div>';
+}
+function cleanupContractPhotos(){
+  var contracts=getData('contracts');
+  var cleaned=0;
+  contracts.forEach(function(c){
+    if(c.photos&&c.photos.length){cleaned+=c.photos.length;c.photos=[];}
+    if(c.signatures){c.signatures={lessor:'',lessee:''};}
+  });
+  if(!cleaned){showToast('Ingen billeder at rydde','success');return;}
+  if(!confirm('Slet billeder og underskrifter fra alle '+contracts.length+' kontrakter?\n\n('+cleaned+' billeder fjernes — kontraktdata beholdes)'))return;
+  setData('contracts',contracts);
+  showStorageInfo();
+  showToast(cleaned+' billeder fjernet — '+Math.round(cleaned*50)+' KB frigjort','success');
 }
 
 // ════════════════════════════════════════════════
