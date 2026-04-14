@@ -1323,8 +1323,17 @@ async function finalizeContract(){
   const vehicles=getData('vehicles');
   const vid=document.getElementById('v_select').value;
   const veh=vehicles.find(v=>v.id===vid);
-  const sigL=document.getElementById('sigLessor').toDataURL('image/jpeg',0.5);
-  const sigD=document.getElementById('sigLessee').toDataURL('image/jpeg',0.5);
+  // Konvertér underskrifter med hvid baggrund (JPEG understøtter ikke transparens)
+  function sigToJpeg(canvasId){
+    var src=document.getElementById(canvasId);
+    var cvs=document.createElement('canvas');cvs.width=src.width;cvs.height=src.height;
+    var ctx=cvs.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,cvs.width,cvs.height);
+    ctx.drawImage(src,0,0);
+    return cvs.toDataURL('image/jpeg',0.7);
+  }
+  const sigL=sigToJpeg('sigLessor');
+  const sigD=sigToJpeg('sigLessee');
   const id='C'+Date.now();
   const existingContracts=getData('contracts');
   const maxNum=existingContracts.reduce((max,c)=>{const n=parseInt((c.num||'').replace('K-',''));return n>max?n:max;},0);
