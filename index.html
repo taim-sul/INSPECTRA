@@ -16,15 +16,11 @@
 <script>
 // ── Service Worker registrering ─────────────────
 if('serviceWorker' in navigator){
-  // Ryd gamle service worker caches der kan servere forældet kode
-  navigator.serviceWorker.getRegistrations().then(function(registrations){
-    registrations.forEach(function(reg){ reg.unregister(); });
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js')
+      .then(r => console.log('[PWA] Service Worker registreret:', r.scope))
+      .catch(e => console.warn('[PWA] SW fejl:', e));
   });
-  if(window.caches){
-    caches.keys().then(function(names){
-      names.forEach(function(name){ caches.delete(name); });
-    });
-  }
 }
 
 // ── Install-prompt ───────────────────────────────
@@ -54,8 +50,6 @@ window.installPWA = function(){
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot }
                              from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getStorage, ref, uploadString, getDownloadURL }
-                             from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 const FB_CFG = {
   apiKey:            "AIzaSyCSzKiHS1Mwlw6OfABUHYK1Dfi4YO_9aAM",
@@ -68,7 +62,6 @@ const FB_CFG = {
 
 const COLS = ['contracts','vehicles','drivers','checks','users','settings'];
 let _db   = null;
-let _storage = null;
 let _queue = []; // Skrive-kø til før Firebase er klar
 
 // ── Status UI ─────────────────────────────────────
@@ -142,20 +135,10 @@ async function fbInit(){
   try{
     const app = initializeApp(FB_CFG);
     _db = getFirestore(app);
-    _storage = getStorage(app);
 
     // Eksponér write-funktion globalt — setData() kalder denne
     window._fbWrite = fbWrite;
     window._fbSync  = fbSync;
-
-    // ── Firebase Storage upload/download ──
-    window._fbUploadPhoto = async function(path, dataUrl){
-      if(!_storage) throw new Error('Storage ikke klar');
-      const storageRef = ref(_storage, path);
-      await uploadString(storageRef, dataUrl, 'data_url');
-      return await getDownloadURL(storageRef);
-    };
-    window._fbStorageReady = function(){ return !!_storage; };
 
     // Tøm kø af skrivninger der skete inden Firebase var klar
     await flushQueue();
@@ -758,15 +741,6 @@ tr:hover td{background:var(--bg3);}
       </div>
     </div>
     <div class="card mt-16">
-      <div class="card-title">💾 Lagerforbrug</div>
-      <div id="storageInfo" style="margin-bottom:12px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-blue btn-sm" onclick="showStorageInfo()">Opdater</button>
-        <button class="btn btn-accent btn-sm" onclick="migratePhotosToCloud()">☁️ Migrer billeder til cloud</button>
-        <button class="btn btn-ghost btn-sm" onclick="cleanupContractPhotos()">🗑 Ryd lokale billeder</button>
-      </div>
-    </div>
-    <div class="card mt-16">
       <div class="card-title">⚠️ Nulstil data</div>
       <p style="color:var(--text2);font-size:.88rem;margin-bottom:12px;">Slet alle kontrakter, biler og lejere. Kan ikke fortrydes.</p>
       <button class="btn btn-red" onclick="confirmReset()">Nulstil alle data</button>
@@ -901,7 +875,7 @@ function setData(k,v){
 }
 
 function initDefaults(){
-  try{ ensureSuperUser(); }catch(e){ console.error('[initDefaults] ensureSuperUser fejl:', e); }
+  ensureSuperUser();
   if(!STORE.get('settings')) setData('settings',{name:'Inspectra',cvr:'',addr:'',city:'',phone:'',email:'',gebyr:'500'});
 }
 
@@ -934,7 +908,7 @@ function ensureSuperUser(){
   }
   if(migrated) setData('users', users);
 }
-try{ initDefaults(); }catch(e){ console.error('[INIT] initDefaults fejl:', e); }
+initDefaults();
 
 let currentUser=null, currentStep=1, contractPhotos=[], sigCtx={}, drawing={};
 let currentContractId=null, currentContractData={};
@@ -1052,7 +1026,7 @@ function showPage(id,el){
   if(id==='drivers') renderDrivers();
   if(id==='users') renderUsers();
   
-  if(id==='settings'){ loadFbConfigUI(); try{showStorageInfo();}catch(e){} }
+  if(id==='settings') loadFbConfigUI();
 }
 
 // ════════════════════════════════════════════════
@@ -1300,7 +1274,7 @@ function handlePhotos(e){
         if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
         const cvs=document.createElement('canvas');cvs.width=w;cvs.height=h;
         cvs.getContext('2d').drawImage(img,0,0,w,h);
-        const compressed=cvs.toDataURL('image/jpeg',0.80);
+        const compressed=cvs.toDataURL('image/jpeg',0.70);
         contractPhotos.push(compressed);renderPhotoGrid();
       };
       img.src=ev.target.result;
@@ -1319,61 +1293,17 @@ function removePhoto(i){contractPhotos.splice(i,1);renderPhotoGrid();}
 // ════════════════════════════════════════════════
 //  FINALIZE CONTRACT
 // ════════════════════════════════════════════════
-async function finalizeContract(){
+function finalizeContract(){
   const vehicles=getData('vehicles');
   const vid=document.getElementById('v_select').value;
   const veh=vehicles.find(v=>v.id===vid);
-  // Konvertér underskrifter med hvid baggrund (JPEG understøtter ikke transparens)
-  function sigToJpeg(canvasId){
-    var src=document.getElementById(canvasId);
-    var cvs=document.createElement('canvas');cvs.width=src.width;cvs.height=src.height;
-    var ctx=cvs.getContext('2d');
-    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,cvs.width,cvs.height);
-    ctx.drawImage(src,0,0);
-    return cvs.toDataURL('image/jpeg',0.85);
-  }
-  const sigL=sigToJpeg('sigLessor');
-  const sigD=sigToJpeg('sigLessee');
+  const sigL=document.getElementById('sigLessor').toDataURL();
+  const sigD=document.getElementById('sigLessee').toDataURL();
   const id='C'+Date.now();
   const existingContracts=getData('contracts');
   const maxNum=existingContracts.reduce((max,c)=>{const n=parseInt((c.num||'').replace('K-',''));return n>max?n:max;},0);
-  const contractNum='K-'+String(maxNum+1).padStart(4,'0');
-
-  // Upload billeder til Firebase Storage hvis tilgængelig
-  let photoUrls=[];
-  let sigUrls={lessor:'',lessee:''};
-  const useStorage = window._fbStorageReady && window._fbStorageReady();
-
-  if(useStorage && (contractPhotos.length || sigL || sigD)){
-    showToast('Uploader billeder til cloud...','success');
-    try{
-      // Upload fotos
-      for(let pi=0;pi<contractPhotos.length;pi++){
-        const url = await window._fbUploadPhoto('contracts/'+id+'/photo_'+pi+'.jpg', contractPhotos[pi]);
-        photoUrls.push(url);
-      }
-      // Upload underskrifter
-      if(sigL && sigL.length > 100){
-        sigUrls.lessor = await window._fbUploadPhoto('contracts/'+id+'/sig_lessor.jpg', sigL);
-      }
-      if(sigD && sigD.length > 100){
-        sigUrls.lessee = await window._fbUploadPhoto('contracts/'+id+'/sig_lessee.jpg', sigD);
-      }
-      console.log('[Kontrakt] '+photoUrls.length+' billeder uploadet til Firebase Storage');
-    }catch(uploadErr){
-      console.warn('[Kontrakt] Storage upload fejl, falder tilbage til lokal:', uploadErr);
-      // Fallback — gem base64 lokalt
-      photoUrls=contractPhotos.slice();
-      sigUrls={lessor:sigL,lessee:sigD};
-    }
-  } else {
-    // Ingen Firebase Storage — gem base64 lokalt
-    photoUrls=contractPhotos.slice();
-    sigUrls={lessor:sigL,lessee:sigD};
-  }
-
   const contract={
-    id,num:contractNum,
+    id,num:'K-'+String(maxNum+1).padStart(4,'0'),
     created:new Date().toISOString(),status:'active',
     lessor:{
       name:document.getElementById('u_name').value,
@@ -1416,30 +1346,17 @@ async function finalizeContract(){
       selvrisikoNote:document.getElementById('c_selvrisiko_note').value,
       notes:document.getElementById('c_notes').value,
     },
-    photos:photoUrls,
-    signatures:sigUrls,
+    photos:contractPhotos.slice(),
+    signatures:{lessor:sigL,lessee:sigD},
     createdBy:currentUser?currentUser.name:'admin',
   };
   const updated=vehicles.map(v=>v.id===vid?{...v,status:'rented',currentContract:id}:v);
   try{
     setData('vehicles',updated);
-    const contracts=getData('contracts');contracts.push(contract);
-    try{
-      setData('contracts',contracts);
-    }catch(storageErr){
-      console.warn('[Kontrakt] localStorage fuld, prøver uden billeder:', storageErr);
-      contract.photos=[];
-      contract.signatures={lessor:'',lessee:''};
-      try{
-        setData('contracts',contracts);
-        showToast('Kontrakt gemt — billeder kun i cloud','success');
-      }catch(e2){
-        showToast('Kan ikke gemme — ryd gamle kontrakters billeder i Indstillinger','error');
-        return;
-      }
-    }
+    const contracts=getData('contracts');contracts.push(contract);setData('contracts',contracts);
   }catch(err){
     showToast('Fejl ved gemning: '+err.message,'error');
+    console.error('finalizeContract setData error:',err);
     return;
   }
   currentContractData=contract;
@@ -1524,8 +1441,8 @@ function buildContractHTML(c){
     </table>
     ${photosHTML}
     <div class="sig-block">
-      <div class="sig-line">${c.signatures&&c.signatures.lessor?'<img src="'+c.signatures.lessor+'" style="height:60px;max-width:100%" crossorigin="anonymous">':'<div style="height:60px"></div>'}<br><b>Udlejer:</b> ${c.lessor.name}</div>
-      <div class="sig-line">${c.signatures&&c.signatures.lessee?'<img src="'+c.signatures.lessee+'" style="height:60px;max-width:100%" crossorigin="anonymous">':'<div style="height:60px"></div>'}<br><b>Lejer:</b> ${c.driver.name}</div>
+      <div class="sig-line"><img src="${c.signatures.lessor}" style="height:60px;max-width:100%"><br><b>Udlejer:</b> ${c.lessor.name}</div>
+      <div class="sig-line"><img src="${c.signatures.lessee}" style="height:60px;max-width:100%"><br><b>Lejer:</b> ${c.driver.name}</div>
     </div>
     <p style="font-size:.72rem;color:#888;margin-top:12px;text-align:center">Genereret af Inspectra — ${fmtDT(new Date().toISOString())}</p>
   </div>`;
@@ -1538,13 +1455,14 @@ function fmtD(s){if(!s)return'—';const d=new Date(s);if(isNaN(d))return s;retu
 //  PRINT + EMAIL (PDF vedhæftet)
 // ════════════════════════════════════════════════
 function printContract(){
+  // Brug altid buildContractHTML med den aktuelle kontrakt — printArea kan være forældet
   const html=buildContractHTML(currentContractData);
-  const fullHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}table td,table th{border:1px solid #ccc;padding:6px;font-size:12px}h2{text-align:center}.sig-block{display:flex;gap:24px;margin-top:24px}.sig-line{flex:1;border-top:1px solid #333;padding-top:6px}img{max-width:100%}</style></head><body>'+html+'<scr'+'ipt>window.onload=function(){var imgs=document.querySelectorAll("img");var loaded=0;var total=imgs.length;if(!total){window.print();return;}imgs.forEach(function(img){if(img.complete){loaded++;if(loaded>=total)window.print();}else{img.onload=img.onerror=function(){loaded++;if(loaded>=total)window.print();};};});setTimeout(function(){window.print();},3000);}<'+'/scr'+'ipt></body></html>';
+  const fullHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}table td,table th{border:1px solid #ccc;padding:6px;font-size:12px}h2{text-align:center}.sig-block{display:flex;gap:24px;margin-top:24px}.sig-line{flex:1;border-top:1px solid #333;padding-top:6px}</style></head><body>'+html+'<scr'+'ipt>window.onload=function(){window.print()}<'+'/scr'+'ipt></body></html>';
   const blob=new Blob([fullHtml],{type:'text/html'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),15000);
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
 }
 function printContractById(){
   const c=getData('contracts').find(x=>x.id===currentContractId);
@@ -2316,9 +2234,7 @@ async function importDriversExcel(event){
 // ════════════════════════════════════════════════
 //  KORTSCANNER — Gemini AI Integration
 // ════════════════════════════════════════════════
-// ── GEMINI PROXY (API-nøglen er gemt sikkert i Cloudflare Worker) ──
-// VIGTIGT: Erstat denne URL med din egen Cloudflare Worker URL efter deploy
-var GEMINI_PROXY_URL = "https://gemini-proxy.taim.workers.dev";
+var GEMINI_KEY = "AIzaSyA4W3yiqPJicnj-Wvj7h6NF-MSXHxpnTrg";
 var GEMINI_MODELS = ["gemini-2.5-flash","gemini-2.0-flash","gemini-2.0-flash-lite"];
 var _geminiModelIdx = 0;
 
@@ -2355,36 +2271,17 @@ async function geminiScanCard(file, scanType){
   ]}]};
   var data;
   for(var attempt=0;attempt<GEMINI_MODELS.length;attempt++){
-    console.log('[KortScanner] Sender til proxy:', GEMINI_PROXY_URL, 'model:', GEMINI_MODELS[_geminiModelIdx]);
-    var res;
-    try{
-      res = await fetch(GEMINI_PROXY_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:GEMINI_MODELS[_geminiModelIdx], contents:body.contents})
-      });
-    }catch(fetchErr){
-      console.error('[KortScanner] Fetch fejl:', fetchErr);
-      throw new Error('Kan ikke nå proxy: '+fetchErr.message);
-    }
-    console.log('[KortScanner] Response status:', res.status);
-    if(!res.ok && res.status !== 200){
-      var errText = '';
-      try{ errText = await res.text(); }catch(e){}
-      console.error('[KortScanner] Proxy svar:', res.status, errText);
-      if(res.status === 403) throw new Error('Proxy afviste request (origin ikke tilladt)');
-      if(res.status === 500) throw new Error('Proxy fejl: '+(errText||'Tjek GEMINI_KEY i Cloudflare'));
-    }
-    data = typeof res.json === 'function' ? await res.clone().json().catch(function(){ return {error:{message:'Ugyldigt JSON svar'}}; }) : {error:{message:'Intet svar'}};
-    console.log('[KortScanner] Data:', JSON.stringify(data).substring(0,200));
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODELS[_geminiModelIdx]+':generateContent?key='+GEMINI_KEY;
+    var res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    data = await res.json();
     if(data.error&&(data.error.message||'').match(/Quota exceeded|not found|not supported/i)){
       _geminiModelIdx=(_geminiModelIdx+1)%GEMINI_MODELS.length;continue;
     }
     break;
   }
-  if(data.error) throw new Error('AI fejl: '+(data.error.message||data.error||'Ukendt'));
+  if(data.error) throw new Error('API-fejl: '+(data.error.message||'Ukendt'));
   var text = data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]?data.candidates[0].content.parts[0].text:'';
-  if(!text) throw new Error('Intet svar fra AI — prøv et tydeligere billede');
+  if(!text) throw new Error('Intet svar fra AI');
   var clean = text.replace(/```json|```/g,'').trim();
   return JSON.parse(clean);
 }
@@ -2457,87 +2354,6 @@ async function handleDriverModalScan(event, scanType){
     if(statusEl){statusEl.textContent='❌ Fejl';statusEl.style.color='var(--red)';}
   }
   setTimeout(function(){if(statusEl){statusEl.textContent='';statusEl.style.color='';}},4000);
-}
-
-// ════════════════════════════════════════════════
-//  STORAGE INFO & CLEANUP
-// ════════════════════════════════════════════════
-function showStorageInfo(){
-  var total=0;
-  for(var key in localStorage){ if(localStorage.hasOwnProperty(key)){ total+=localStorage.getItem(key).length; } }
-  var totalMB=(total/1048576).toFixed(2);
-  var maxMB=5;
-  var pct=Math.min(100,Math.round((total/1048576/maxMB)*100));
-  var contracts=getData('contracts');
-  var photoCount=0,photoSize=0,localPhotos=0;
-  contracts.forEach(function(c){
-    (c.photos||[]).forEach(function(p){ photoCount++; if(p&&p.startsWith('data:')){ localPhotos++; photoSize+=p.length; } });
-    if(c.signatures){
-      if(c.signatures.lessor&&c.signatures.lessor.startsWith('data:')) photoSize+=c.signatures.lessor.length;
-      if(c.signatures.lessee&&c.signatures.lessee.startsWith('data:')) photoSize+=c.signatures.lessee.length;
-    }
-  });
-  var photoMB=(photoSize/1048576).toFixed(2);
-  var barColor=pct>80?'var(--red)':pct>60?'#f59e0b':'var(--green)';
-  var storageReady=window._fbStorageReady&&window._fbStorageReady();
-  document.getElementById('storageInfo').innerHTML=
-    '<div style="margin-bottom:8px"><b>'+totalMB+' MB</b> af '+maxMB+' MB lokalt brugt ('+pct+'%)</div>'+
-    '<div style="background:var(--bg2);border-radius:6px;height:12px;overflow:hidden;margin-bottom:8px">'+
-    '<div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:6px;transition:width .3s"></div></div>'+
-    '<div style="font-size:.82rem;color:var(--text2)">📋 '+contracts.length+' kontrakter · 📷 '+photoCount+' billeder ('+localPhotos+' lokale = '+photoMB+' MB)</div>'+
-    '<div style="font-size:.82rem;color:'+(storageReady?'var(--green)':'var(--red)')+';margin-top:4px">'+(storageReady?'☁️ Firebase Storage aktiv — nye billeder gemmes i cloud':'⚠️ Firebase Storage ikke tilgængelig — billeder gemmes lokalt')+'</div>';
-}
-function cleanupContractPhotos(){
-  var contracts=getData('contracts');
-  var cleaned=0;
-  contracts.forEach(function(c){
-    if(c.photos&&c.photos.length){
-      c.photos.forEach(function(p){ if(p&&p.startsWith('data:')) cleaned++; });
-      c.photos=c.photos.filter(function(p){ return p&&!p.startsWith('data:'); }); // Behold cloud URLs
-    }
-    if(c.signatures){
-      if(c.signatures.lessor&&c.signatures.lessor.startsWith('data:')){c.signatures.lessor='';cleaned++;}
-      if(c.signatures.lessee&&c.signatures.lessee.startsWith('data:')){c.signatures.lessee='';cleaned++;}
-    }
-  });
-  if(!cleaned){showToast('Ingen lokale billeder at rydde','success');return;}
-  if(!confirm('Slet '+cleaned+' lokale billeder fra kontrakter?\n\n(Cloud-billeder beholdes — kontraktdata beholdes)'))return;
-  setData('contracts',contracts);
-  showStorageInfo();
-  showToast(cleaned+' lokale billeder fjernet','success');
-}
-async function migratePhotosToCloud(){
-  if(!window._fbStorageReady||!window._fbStorageReady()){showToast('Firebase Storage ikke klar','error');return;}
-  var contracts=getData('contracts');
-  var total=0,uploaded=0;
-  contracts.forEach(function(c){ (c.photos||[]).forEach(function(p){ if(p&&p.startsWith('data:'))total++; }); });
-  if(!total){showToast('Ingen lokale billeder at migrere','success');return;}
-  if(!confirm('Migrer '+total+' billeder til Firebase Storage cloud?\n\nDette frigør lokalt lagerplads.'))return;
-  showToast('Migrerer billeder til cloud (0/'+total+')...','success');
-  for(var ci=0;ci<contracts.length;ci++){
-    var c=contracts[ci];
-    if(!c.photos)continue;
-    for(var pi=0;pi<c.photos.length;pi++){
-      if(c.photos[pi]&&c.photos[pi].startsWith('data:')){
-        try{
-          var url=await window._fbUploadPhoto('contracts/'+c.id+'/photo_'+pi+'.jpg',c.photos[pi]);
-          c.photos[pi]=url;uploaded++;
-          showToast('Migrerer billeder ('+uploaded+'/'+total+')...','success');
-        }catch(e){console.warn('Migrering fejl for',c.id,pi,e);}
-      }
-    }
-    if(c.signatures){
-      if(c.signatures.lessor&&c.signatures.lessor.startsWith('data:')){
-        try{c.signatures.lessor=await window._fbUploadPhoto('contracts/'+c.id+'/sig_lessor.jpg',c.signatures.lessor);uploaded++;}catch(e){}
-      }
-      if(c.signatures.lessee&&c.signatures.lessee.startsWith('data:')){
-        try{c.signatures.lessee=await window._fbUploadPhoto('contracts/'+c.id+'/sig_lessee.jpg',c.signatures.lessee);uploaded++;}catch(e){}
-      }
-    }
-  }
-  setData('contracts',contracts);
-  showStorageInfo();
-  showToast('Færdig! '+uploaded+' billeder migreret til cloud','success');
 }
 
 // ════════════════════════════════════════════════
