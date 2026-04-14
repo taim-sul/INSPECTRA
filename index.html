@@ -1295,12 +1295,12 @@ function handlePhotos(e){
     r.onload=ev=>{
       const img=new Image();
       img.onload=()=>{
-        const MAX=800;
+        const MAX=1200;
         let w=img.width,h=img.height;
         if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
         const cvs=document.createElement('canvas');cvs.width=w;cvs.height=h;
         cvs.getContext('2d').drawImage(img,0,0,w,h);
-        const compressed=cvs.toDataURL('image/jpeg',0.50);
+        const compressed=cvs.toDataURL('image/jpeg',0.80);
         contractPhotos.push(compressed);renderPhotoGrid();
       };
       img.src=ev.target.result;
@@ -1330,7 +1330,7 @@ async function finalizeContract(){
     var ctx=cvs.getContext('2d');
     ctx.fillStyle='#ffffff';ctx.fillRect(0,0,cvs.width,cvs.height);
     ctx.drawImage(src,0,0);
-    return cvs.toDataURL('image/jpeg',0.7);
+    return cvs.toDataURL('image/jpeg',0.85);
   }
   const sigL=sigToJpeg('sigLessor');
   const sigD=sigToJpeg('sigLessee');
@@ -1524,8 +1524,8 @@ function buildContractHTML(c){
     </table>
     ${photosHTML}
     <div class="sig-block">
-      <div class="sig-line"><img src="${c.signatures.lessor}" style="height:60px;max-width:100%"><br><b>Udlejer:</b> ${c.lessor.name}</div>
-      <div class="sig-line"><img src="${c.signatures.lessee}" style="height:60px;max-width:100%"><br><b>Lejer:</b> ${c.driver.name}</div>
+      <div class="sig-line">${c.signatures&&c.signatures.lessor?'<img src="'+c.signatures.lessor+'" style="height:60px;max-width:100%" crossorigin="anonymous">':'<div style="height:60px"></div>'}<br><b>Udlejer:</b> ${c.lessor.name}</div>
+      <div class="sig-line">${c.signatures&&c.signatures.lessee?'<img src="'+c.signatures.lessee+'" style="height:60px;max-width:100%" crossorigin="anonymous">':'<div style="height:60px"></div>'}<br><b>Lejer:</b> ${c.driver.name}</div>
     </div>
     <p style="font-size:.72rem;color:#888;margin-top:12px;text-align:center">Genereret af Inspectra — ${fmtDT(new Date().toISOString())}</p>
   </div>`;
@@ -1538,14 +1538,13 @@ function fmtD(s){if(!s)return'—';const d=new Date(s);if(isNaN(d))return s;retu
 //  PRINT + EMAIL (PDF vedhæftet)
 // ════════════════════════════════════════════════
 function printContract(){
-  // Brug altid buildContractHTML med den aktuelle kontrakt — printArea kan være forældet
   const html=buildContractHTML(currentContractData);
-  const fullHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}table td,table th{border:1px solid #ccc;padding:6px;font-size:12px}h2{text-align:center}.sig-block{display:flex;gap:24px;margin-top:24px}.sig-line{flex:1;border-top:1px solid #333;padding-top:6px}</style></head><body>'+html+'<scr'+'ipt>window.onload=function(){window.print()}<'+'/scr'+'ipt></body></html>';
+  const fullHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}table td,table th{border:1px solid #ccc;padding:6px;font-size:12px}h2{text-align:center}.sig-block{display:flex;gap:24px;margin-top:24px}.sig-line{flex:1;border-top:1px solid #333;padding-top:6px}img{max-width:100%}</style></head><body>'+html+'<scr'+'ipt>window.onload=function(){var imgs=document.querySelectorAll("img");var loaded=0;var total=imgs.length;if(!total){window.print();return;}imgs.forEach(function(img){if(img.complete){loaded++;if(loaded>=total)window.print();}else{img.onload=img.onerror=function(){loaded++;if(loaded>=total)window.print();};};});setTimeout(function(){window.print();},3000);}<'+'/scr'+'ipt></body></html>';
   const blob=new Blob([fullHtml],{type:'text/html'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  setTimeout(()=>URL.revokeObjectURL(url),15000);
 }
 function printContractById(){
   const c=getData('contracts').find(x=>x.id===currentContractId);
